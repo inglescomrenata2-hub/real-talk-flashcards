@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cut">
 <title>Real Talk Flashcards</title>
+<meta name="description" content="Flashcards do English Pocket Planner · teacher Renata">
+<meta name="theme-color" content="#F5F0E8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%A4%8E%3C/text%3E%3C/svg%3E">
+<meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -304,7 +308,7 @@ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
 let st=load(); st.cards=st.cards||{}; st.days=st.days||[]; st.week=st.week??-1; st.newToday=st.newToday||{};
 
 const $=id=>document.getElementById(id);
-let queue=[],idx=0,flipped=false;
+let queue=[],idx=0,flipped=false,backTimer=null;
 
 function todayStr(d=new Date()){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return todayStr(d)}
@@ -328,7 +332,7 @@ const mastered=p=>p.filter(x=>(st.cards[x.id]?.box||0)>=3).length;
 function buildSession(extra=false){
   const t=todayStr(), p=pool();
   const due=shuffle(p.filter(x=>st.cards[x.id] && st.cards[x.id].due<=t)).sort((a,b)=>st.cards[a.id].box-st.cards[b.id].box);
-  const usedNew=st.newToday[t]||0, roomNew=extra?5:Math.max(0,NEW_PER_DAY-usedNew);
+  const usedNew=st.newToday[t]||0, roomNew=extra?5:(st.week>=0?SESSION:Math.max(0,NEW_PER_DAY-usedNew));
   // cartas novas: semanas mais cedo primeiro, embaralhadas dentro da semana
   const fresh=shuffle(p.filter(x=>!st.cards[x.id])).sort((a,b)=>a.w-b.w).slice(0,roomNew);
   let s=[...due.slice(0,SESSION-Math.min(fresh.length,3)),...fresh];
@@ -360,7 +364,8 @@ function show(){
   const x=queue[idx], c=x.c, isNew=!st.cards[x.id];
   $("f-num").textContent=String(idx+1).padStart(2,"0")+" / "+String(queue.length).padStart(2,"0")+(isNew?" · NOVA":" · REVISÃO");
   $("f-tag").textContent=c[3]; $("f-prompt").textContent=c[0];
-  setTimeout(()=>{ $("b-tag").textContent=WEEKS[x.w].t+" · "+c[3]; $("b-answer").innerHTML=c[1]; $("b-tip").innerHTML=c[2]; }, wasFlipped?600:0);
+  const fill=()=>{ $("b-tag").textContent=WEEKS[x.w].t+" · "+c[3]; $("b-answer").innerHTML=c[1]; $("b-tip").innerHTML=c[2]; };
+  clearTimeout(backTimer); if(wasFlipped){ $("b-answer").style.visibility="hidden"; backTimer=setTimeout(()=>{fill();$("b-answer").style.visibility=""},600);} else { fill(); $("b-answer").style.visibility=""; }
 }
 function grade(ok){
   const x=queue[idx], t=todayStr();
@@ -370,8 +375,13 @@ function grade(ok){
   else { r.box=0; r.due=t; if(queue.slice(idx+1).filter(q=>q.id===x.id).length===0) queue.push(x); }
   save(); markToday(); idx++; show();
 }
-$("card").onclick=e=>{ if(e.target.closest(".listen"))return; flipped=!flipped; $("card").classList.toggle("flip",flipped); if(flipped){$("again").disabled=$("know").disabled=false}};
-$("listen").onclick=()=>{ if(!("speechSynthesis" in window))return; const u=new SpeechSynthesisUtterance($("b-answer").textContent); u.lang="en-US"; u.rate=.92; speechSynthesis.cancel(); speechSynthesis.speak(u)};
+$("card").onclick=e=>{ if(e.target.closest(".listen"))return; if(!flipped&&backTimer){clearTimeout(backTimer);backTimer=null;const x=queue[idx];if(x){$("b-tag").textContent=WEEKS[x.w].t+" · "+x.c[3];$("b-answer").innerHTML=x.c[1];$("b-tip").innerHTML=x.c[2];$("b-answer").style.visibility="";}} flipped=!flipped; $("card").classList.toggle("flip",flipped); if(flipped){$("again").disabled=$("know").disabled=false}};
+function pickVoice(){const v=speechSynthesis.getVoices();return v.find(x=>/en[-_]US/i.test(x.lang)&&/Samantha|Google US|Aria|Jenny|Natural/i.test(x.name))||v.find(x=>/en[-_]US/i.test(x.lang))||v.find(x=>/^en/i.test(x.lang))}
+if("speechSynthesis" in window){speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();}
+$("listen").onclick=e=>{ e.stopPropagation(); if(!("speechSynthesis" in window)){alert("Seu navegador não tem áudio disponível. Tente pelo Chrome ou Safari.");return}
+  const u=new SpeechSynthesisUtterance($("b-answer").textContent); u.lang="en-US"; u.rate=.9; const v=pickVoice(); if(v)u.voice=v;
+  const b=$("listen"); b.textContent="♪ Tocando…"; u.onend=u.onerror=()=>{b.textContent="▶ Ouvir"};
+  speechSynthesis.cancel(); speechSynthesis.resume(); speechSynthesis.speak(u)};
 $("know").onclick=()=>grade(true);
 $("again").onclick=()=>grade(false);
 $("restart").onclick=()=>start(true);
